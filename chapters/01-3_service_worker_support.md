@@ -149,32 +149,144 @@ if ('caches' in window) {
 
 #### 점진적 향상 기법 적용
 
-서비스 워커를 사용할 때는 점진적 향상(Progressive Enhancement) 기법을 적용하는 것이 좋습니다:
+점진적 향상(Progressive Enhancement) 기법은 모든 사용자에게 기본적인 기능을 제공하고, 브라우저가 지원하는 경우에만 추가 기능을 활성화하는 접근 방식입니다. 서비스 워커를 사용할 때 이 기법을 적용하면 다음과 같은 이점이 있습니다:
+
+1. **호환성 확보**: 모든 브라우저에서 기본 기능이 작동합니다.
+2. **사용자 경험 향상**: 지원되는 브라우저에서는 추가 기능을 제공합니다.
+3. **안정성 보장**: 서비스 워커가 실패해도 기본 기능은 계속 작동합니다.
+
+다음은 점진적 향상 기법을 적용한 실제 예시입니다:
 
 ```javascript
-// 기본 기능 구현
-function loadContent() {
-  fetch('/api/content')
+// 모든 브라우저에서 작동하는 기본 이미지 갤러리 기능
+function loadGallery() {
+  fetch('/api/images')
     .then(response => response.json())
-    .then(data => {
-      displayContent(data);
+    .then(images => {
+      const gallery = document.getElementById('gallery');
+      images.forEach(image => {
+        const img = document.createElement('img');
+        img.src = image.url;
+        img.alt = image.description;
+        gallery.appendChild(img);
+      });
+    })
+    .catch(error => {
+      console.error('이미지를 불러오는 데 실패했습니다:', error);
+      document.getElementById('error-message').textContent = 
+        '이미지를 불러올 수 없습니다. 나중에 다시 시도해주세요.';
     });
 }
 
-// 서비스 워커 지원 시 추가 기능 활성화
+// 서비스 워커 지원 시 향상된 기능 활성화
 if ('serviceWorker' in navigator) {
+  // 서비스 워커 등록
   navigator.serviceWorker.register('/sw.js')
     .then(registration => {
-      console.log('서비스 워커가 등록되었습니다.');
-      // 오프라인 기능 활성화
+      console.log('서비스 워커가 등록되었습니다:', registration.scope);
+    })
+    .catch(error => {
+      console.error('서비스 워커 등록 실패:', error);
     });
 }
 
 // 기본 기능은 모든 브라우저에서 작동
-loadContent();
+loadGallery();
 ```
 
-이 접근 방식을 통해 서비스 워커를 지원하는 브라우저에서는 향상된 기능을 제공하고, 지원하지 않는 브라우저에서도 기본 기능은 정상적으로 작동하도록 할 수 있습니다.
+위 코드에서 `loadGallery()` 함수는 모든 브라우저에서 작동하는 기본 기능입니다. 서비스 워커를 지원하는 브라우저에서는 서비스 워커가 등록되어 추가 기능을 제공합니다.
+
+서비스 워커 스크립트(`sw.js`)는 다음과 같이 구현할 수 있습니다:
+
+```javascript
+// 서비스 워커 스크립트 (sw.js)
+const CACHE_NAME = 'image-gallery-v1';
+const URLS_TO_CACHE = [
+  '/',
+  '/index.html',
+  '/styles.css',
+  '/app.js',
+  '/offline.html'
+];
+
+// 설치 단계에서 리소스 캐싱
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => {
+        console.log('캐시가 열렸습니다');
+        return cache.addAll(URLS_TO_CACHE);
+      })
+  );
+});
+
+// 네트워크 요청 가로채기
+self.addEventListener('fetch', event => {
+  // 이미지 요청인 경우 캐시-우선 전략 적용
+  if (event.request.url.includes('/api/images') || 
+      event.request.url.match(/\.(jpg|jpeg|png|gif)$/)) {
+    event.respondWith(
+      caches.match(event.request)
+        .then(response => {
+          // 캐시에 있으면 캐시된 응답 반환
+          if (response) {
+            return response;
+          }
+          
+          // 캐시에 없으면 네트워크에서 가져와 캐시에 저장
+          return fetch(event.request).then(networkResponse => {
+            // 유효한 응답인지 확인
+            if (!networkResponse || networkResponse.status !== 200 || 
+                networkResponse.type !== 'basic') {
+              return networkResponse;
+            }
+            
+            // 응답을 복제하여 캐시에 저장 (스트림은 한 번만 사용 가능)
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then(cache => {
+              cache.put(event.request, responseToCache);
+            });
+            
+            return networkResponse;
+          });
+        })
+        .catch(() => {
+          // 네트워크 오류 시 오프라인 이미지 제공
+          if (event.request.url.match(/\.(jpg|jpeg|png|gif)$/)) {
+            return caches.match('/images/offline-image.png');
+          }
+        })
+    );
+  } else {
+    // 다른 요청은 네트워크 우선 전략 적용
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => {
+          return caches.match(event.request)
+            .then(response => {
+              if (response) {
+                return response;
+              }
+              // HTML 요청이면 오프라인 페이지 제공
+              if (event.request.mode === 'navigate') {
+                return caches.match('/offline.html');
+              }
+              return null;
+            });
+        })
+    );
+  }
+});
+```
+
+이 서비스 워커 구현을 통해 다음과 같은 **향상된 기능**을 제공합니다:
+
+1. **오프라인 작동**: 인터넷 연결이 없어도 이전에 방문한 페이지와 이미지를 볼 수 있습니다.
+2. **성능 향상**: 이미지와 리소스를 캐시하여 로딩 속도를 개선합니다.
+3. **네트워크 복원력**: 네트워크 연결이 불안정해도 캐시된 콘텐츠를 제공합니다.
+4. **오프라인 대체 콘텐츠**: 네트워크 연결이 없을 때 오프라인 페이지와 이미지를 제공합니다.
+
+이러한 방식으로 점진적 향상 기법을 적용하면, 서비스 워커를 지원하지 않는 브라우저에서도 기본 이미지 갤러리 기능은 정상적으로 작동하며, 서비스 워커를 지원하는 브라우저에서는 오프라인 기능, 성능 향상 등의 추가 기능을 제공할 수 있습니다.
 
 ### 4가지 키워드로 정리하는 핵심 포인트
 1. **브라우저 호환성**: 대부분의 현대적인 브라우저는 서비스 워커를 지원하지만, 브라우저별로 지원 시기와 구현 범위에 차이가 있습니다.
