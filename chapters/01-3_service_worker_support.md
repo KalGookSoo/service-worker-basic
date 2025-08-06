@@ -295,31 +295,19 @@ self.addEventListener('fetch', event => {
 4. **대체 기술**: 서비스 워커를 지원하지 않는 환경에서는 IndexedDB, LocalStorage 등의 대체 기술을 활용할 수 있습니다.
 
 ### 확인 문제
-1. 다음 중 서비스 워커를 가장 먼저 지원한 브라우저는?
-   - [ ] Safari
-   - [ ] Firefox
-   - [ ] Chrome
-   - [ ] Edge
-
-2. 서비스 워커 지원 여부를 확인하는 올바른 JavaScript 코드는?
+1. 서비스 워커 지원 여부를 확인하는 올바른 JavaScript 코드는?
    - [ ] if (window.serviceWorker) { ... }
    - [ ] if ('serviceWorker' in navigator) { ... }
    - [ ] if (document.serviceWorker) { ... }
    - [ ] if (browser.supportsServiceWorker()) { ... }
 
-3. 서비스 워커를 지원하지 않는 브라우저에서 사용할 수 있는 대체 기술이 아닌 것은?
+2. 서비스 워커를 지원하지 않는 브라우저에서 사용할 수 있는 대체 기술이 아닌 것은?
    - [ ] IndexedDB
    - [ ] LocalStorage
    - [ ] Web Workers
    - [ ] WebSocket API
 
-4. 서비스 워커 관련 기술 중 iOS Safari에서 지원이 가장 늦게 시작된 것은?
-   - [ ] 기본 서비스 워커 기능
-   - [ ] 푸시 알림
-   - [ ] 백그라운드 동기화
-   - [ ] 캐시 API
-
-5. 서비스 워커를 사용할 때 권장되는 개발 접근 방식은?
+3. 서비스 워커를 사용할 때 권장되는 개발 접근 방식은?
    - [ ] 서비스 워커를 지원하는 브라우저만 타겟팅하기
    - [ ] 모든 기능을 폴리필로 구현하기
    - [ ] 점진적 향상 기법 적용하기
