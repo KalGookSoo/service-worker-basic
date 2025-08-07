@@ -10,6 +10,7 @@
 - [Chapter 02 서비스 워커 생명주기](#chapter-02-서비스-워커-생명주기)
   - [02-1 서비스 워커 등록과 설치](#02-1-서비스-워커-등록과-설치)
   - [02-2 서비스 워커 활성화와 업데이트](#02-2-서비스-워커-활성화와-업데이트)
+  - [02-3 서비스 워커 상태 관리](#02-3-서비스-워커-상태-관리)
 
 ## Chapter 01 서비스 워커 소개
 
@@ -192,4 +193,46 @@
 - 반면, 캐시 이름에 버전 번호를 포함하는 방법(예: app-cache-v1.2.3)은 서비스 워커 내에서 캐시를 효과적으로 관리할 수 있게 해줍니다.
 - importScripts()를 사용하여 버전 정보가 포함된 별도의 파일을 임포트하는 방법은 서비스 워커 파일을 변경하지 않고도 버전을 업데이트할 수 있어 효율적입니다.
 - 서비스 워커 코드에 버전 상수를 정의하는 방법(예: const VERSION = 'v1.2.3')도 간단하고 직관적인 버전 관리 방법입니다.
+
+### 02-3 서비스 워커 상태 관리
+
+#### 문제 1
+**문제**: 서비스 워커의 상태를 확인하기 위해 사용하는 객체는?
+
+**정답**: ServiceWorkerRegistration
+
+**해설**: `ServiceWorkerRegistration` 객체는 서비스 워커 등록에 관한 정보를 제공하며, 서비스 워커의 상태를 확인하고 관리하는 데 사용됩니다. 이 객체는 `installing`, `waiting`, `active` 등의 속성을 통해 서비스 워커의 현재 상태를 확인할 수 있으며, `update()`, `unregister()` 등의 메서드를 제공하여 서비스 워커를 관리할 수 있게 합니다. `ServiceWorkerController`와 `ServiceWorkerState`, `ServiceWorkerManager`는 존재하지 않는 객체입니다.
+
+#### 문제 2
+**문제**: 서비스 워커의 상태 중 '설치는 완료되었지만 아직 활성화되지 않은 상태'를 나타내는 것은?
+
+**정답**: installed
+
+**해설**: 서비스 워커의 상태 중 `installed`(또는 `waiting`이라고도 함)는 서비스 워커의 설치가 완료되었지만 아직 활성화되지 않은 상태를 나타냅니다. 이 상태에서 서비스 워커는 이전 서비스 워커가 더 이상 사용되지 않을 때까지 대기하거나, `skipWaiting()` 메서드가 호출될 때까지 대기합니다. `installing`은 설치 중인 상태, `activating`은 활성화 중인 상태, `activated`는 활성화가 완료된 상태를 나타냅니다.
+
+#### 문제 3
+**문제**: 서비스 워커 등록을 해제하는 메서드는?
+
+**정답**: registration.unregister()
+
+**해설**: 서비스 워커 등록을 해제하려면 `ServiceWorkerRegistration` 객체의 `unregister()` 메서드를 사용합니다. 이 메서드는 서비스 워커 등록을 해제하고 Promise를 반환합니다. 일반적으로 `navigator.serviceWorker.getRegistration().then(registration => registration.unregister())` 형태로 사용됩니다. `registration.remove()`, `registration.delete()`, `registration.deactivate()`는 존재하지 않는 메서드입니다.
+
+#### 문제 4
+**문제**: 서비스 워커의 상태 변경을 감지하는 이벤트는?
+
+**정답**: statechange
+
+**해설**: 서비스 워커의 상태 변경은 `statechange` 이벤트를 통해 감지할 수 있습니다. 이 이벤트는 서비스 워커의 상태가 변경될 때마다 발생하며, 이벤트 핸들러에서 `event.target.state`를 통해 새로운 상태를 확인할 수 있습니다. 주로 `serviceWorker.addEventListener('statechange', event => { ... })` 형태로 사용됩니다. `statuschange`, `change`, `update`는 서비스 워커의 상태 변경과 관련된 이벤트가 아닙니다.
+
+#### 문제 5
+**문제**: 다음 중 서비스 워커 상태 관리와 관련된 올바른 설명은? (복수 응답)
+
+**정답**: 새로운 서비스 워커가 설치되면 `updatefound` 이벤트가 발생한다, 활성화된 서비스 워커가 변경되면 `controllerchange` 이벤트가 발생한다, `getRegistrations()` 메서드를 사용하여 모든 서비스 워커 등록을 가져올 수 있다
+
+**해설**: 
+- 새로운 서비스 워커가 설치되면 `updatefound` 이벤트가 발생합니다. 이 이벤트는 `ServiceWorkerRegistration` 객체에서 발생하며, 새로운 서비스 워커가 발견되고 설치 과정이 시작될 때 트리거됩니다.
+- 활성화된 서비스 워커가 변경되면 `controllerchange` 이벤트가 발생합니다. 이 이벤트는 `navigator.serviceWorker` 객체에서 발생하며, 페이지를 제어하는 서비스 워커가 변경될 때 트리거됩니다.
+- `getRegistrations()` 메서드를 사용하여 모든 서비스 워커 등록을 가져올 수 있습니다. 이 메서드는 `navigator.serviceWorker` 객체에서 제공되며, 현재 페이지의 출처에 등록된 모든 서비스 워커 등록을 Promise로 반환합니다.
+- 서비스 워커의 상태는 `navigator.serviceWorker.state`로 직접 확인할 수 없습니다. 서비스 워커의 상태는 `ServiceWorker` 객체의 `state` 속성을 통해 확인해야 합니다.
+- 서비스 워커 등록을 해제하면 관련 캐시는 자동으로 삭제되지 않습니다. 캐시를 정리하려면 별도로 `caches.delete()` 메서드를 호출해야 합니다.
 
