@@ -93,7 +93,7 @@ graph TD
     C --> F[SessionStorage]
     C --> G[AppCache - 레거시]
     
-    style A fill:#444,stroke:#333,stroke-width:2px
+    style A fill:#808080,stroke:#333,stroke-width:2px
 ```
 
 ### 기능 감지 방법

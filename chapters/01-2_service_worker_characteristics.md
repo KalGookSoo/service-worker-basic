@@ -30,8 +30,8 @@ graph TD
     C --> H[캐시 관리]
     C --> I[푸시 알림]
     
-    style C fill:#444,stroke:#333,stroke-width:2px
-    style B fill:#444,stroke:#333,stroke-width:2px
+    style C fill:#808080,stroke:#333,stroke-width:2px
+    style B fill:#808080,stroke:#333,stroke-width:2px
 ```
 
 #### 제한사항
@@ -162,7 +162,7 @@ graph LR
     F --> F1[백그라운드 동기화]
     G --> G1[메시지 처리]
     
-    style A fill:#444,stroke:#333,stroke-width:2px
+    style A fill:#808080,stroke:#333,stroke-width:2px
 ```
 
 #### 이벤트 처리 방식

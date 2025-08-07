@@ -106,8 +106,8 @@ graph LR
     Browser[브라우저] --> SW
     Browser --> WW
     
-    style SW fill:#444,stroke:#333,stroke-width:2px
-    style WW fill:#444,stroke:#333,stroke-width:2px
+    style SW fill:#808080,stroke:#333,stroke-width:2px
+    style WW fill:#808080,stroke:#333,stroke-width:2px
 ```
 
 ### 3가지 키워드로 정리하는 핵심 포인트

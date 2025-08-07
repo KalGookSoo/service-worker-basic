@@ -120,7 +120,7 @@ graph TD
         D
     end
     
-    style E fill:#444,stroke:#333,stroke-width:2px
+    style E fill:#808080,stroke:#333,stroke-width:2px
 ```
 
 ### 설치 이벤트 처리
@@ -192,8 +192,8 @@ graph LR
     D --> E[활성화 중]
     E --> F[활성화됨]
     C -->|"skipWaiting()"| E
-    style C fill:#282,stroke:#333,stroke-width:2px
-    style F fill:#282,stroke:#333,stroke-width:2px
+    style C fill:#6e996e,stroke:#333,stroke-width:2px
+    style F fill:#6e996e,stroke:#333,stroke-width:2px
 ```
 
 ### 디버깅 및 문제 해결
