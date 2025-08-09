@@ -150,36 +150,8 @@
 - 4가지 키워드로 정리하는 핵심 포인트
 - 확인 문제
 
-### [Chapter 06 서비스 워커와 프레임워크](#chapter-06-서비스-워커와-프레임워크)
-#### [06-1 React에서 서비스 워커 활용](chapters/06-1_service_workers_in_react.md)
-- Create React App의 서비스 워커
-- Workbox와 React 통합
-- React 애플리케이션에서 PWA 구현
-- 상태 관리와 서비스 워커 통신
-- 5가지 키워드로 정리하는 핵심 포인트
-- 확인 문제
-
-#### [06-2 Workbox 라이브러리](chapters/06-2_workbox_library.md)
-- Workbox 소개
-- 주요 모듈 및 기능
-  - 라우팅
-  - 캐싱 전략
-  - 프리캐싱
-  - 백그라운드 동기화
-- 빌드 도구 통합
-- 6가지 키워드로 정리하는 핵심 포인트
-- 확인 문제
-
-#### [06-3 Java 백엔드와 서비스 워커 연동](chapters/06-3_java_backend_integration.md)
-- 서버 푸시 구현
-- Spring Boot와 웹 푸시 연동
-- 푸시 알림 서버 구축
-- 보안 및 인증 처리
-- 5가지 키워드로 정리하는 핵심 포인트
-- 확인 문제
-
-### [Chapter 07 서비스 워커 고급 주제](#chapter-07-서비스-워커-고급-주제)
-#### [07-1 성능 최적화](chapters/07-1_performance_optimization.md)
+### [Chapter 06 서비스 워커 고급 주제](#chapter-06-서비스-워커-고급-주제)
+#### [06-1 성능 최적화](chapters/06-1_performance_optimization.md)
 - 리소스 우선순위 지정
 - 프리캐싱과 런타임 캐싱
 - 네트워크 요청 최적화
@@ -187,7 +159,7 @@
 - 5가지 키워드로 정리하는 핵심 포인트
 - 확인 문제
 
-#### [07-2 보안 고려사항](chapters/07-2_security_considerations.md)
+#### [06-2 보안 고려사항](chapters/06-2_security_considerations.md)
 - HTTPS 요구사항
 - 서비스 워커 스코프 제한
 - 중요 데이터 처리
@@ -195,7 +167,7 @@
 - 4가지 키워드로 정리하는 핵심 포인트
 - 확인 문제
 
-#### [07-3 디버깅 및 테스트](chapters/07-3_debugging_testing.md)
+#### [06-3 디버깅 및 테스트](chapters/06-3_debugging_testing.md)
 - 브라우저 개발자 도구
   - Chrome DevTools
   - Firefox DevTools
