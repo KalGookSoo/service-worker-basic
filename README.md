@@ -96,7 +96,7 @@
 - 확인 문제
 
 ### [Chapter 04 서비스 워커 이벤트 처리](#chapter-04-서비스-워커-이벤트-처리)
-#### [04-1 Fetch 이벤트](chapters/04-1_fetch_event.md)
+#### [04-1 Fetch 이벤트](chapters/04-1_fetch_events.md)
 - Fetch 이벤트 소개
 - 요청 가로채기
 - 응답 생성 및 수정
