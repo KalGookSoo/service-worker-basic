@@ -772,3 +772,66 @@ window.addEventListener('beforeinstallprompt', (e) => {
 
 **해설**: 효과적인 오프라인 페이지 설계의 요소가 아닌 것은 "자동 새로고침 기능"입니다. 자동 새로고침은 오프라인 상태에서 계속해서 네트워크 요청을 시도하게 되어 배터리 소모를 증가시키고 사용자 경험을 저하시킬 수 있습니다. 대신, 사용자가 수동으로 새로고침할 수 있는 버튼을 제공하거나, 네트워크 상태가 변경될 때(`online` 이벤트 발생 시)에만 페이지를 새로고침하는 것이 더 효과적입니다. 효과적인 오프라인 페이지 설계의 요소로는 사용자 친화적인 오류 메시지(현재 상태를 명확하게 설명), 캐시된 콘텐츠 접근 제공(가능한 경우 이전에 로드된 콘텐츠 표시), 브랜딩 유지(일관된 디자인으로 신뢰성 유지) 등이 있습니다.
 
+## Chapter 06 서비스 워커와 프레임워크
+
+### 06-1 React에서 서비스 워커 활용
+
+#### 문제 1
+**문제**: Create React App에서 서비스 워커를 활성화하는 올바른 방법은?
+
+**정답**: serviceWorkerRegistration.register()
+
+**해설**: Create React App(CRA)에서 서비스 워커를 활성화하는 올바른 방법은 `serviceWorkerRegistration.register()` 메서드를 호출하는 것입니다. CRA 버전 4 이상에서는 서비스 워커 관련 코드가 `src/service-worker.js`와 `src/serviceWorkerRegistration.js` 파일로 분리되어 있으며, `src/index.js` 파일에서 `serviceWorkerRegistration.register()`를 호출하여 서비스 워커를 활성화합니다. 이 메서드는 프로덕션 환경에서만 서비스 워커를 등록하며, 개발 모드에서는 서비스 워커가 활성화되지 않습니다. `serviceWorker.enable()`과 `registerServiceWorker()`는 존재하지 않는 메서드이며, `navigator.serviceWorker.start()`도 유효한 API가 아닙니다.
+
+#### 문제 2
+**문제**: React 애플리케이션에서 서비스 워커와 통신하기 위해 사용하는 API는?
+
+**정답**: postMessage()
+
+**해설**: React 애플리케이션에서 서비스 워커와 통신하기 위해 사용하는 API는 `postMessage()`입니다. 이 API는 웹 워커와 메인 스레드 간의 메시지 전달을 위한 표준 방법으로, 서비스 워커와 React 애플리케이션 간에 데이터를 주고받을 수 있게 해줍니다. React 애플리케이션에서 서비스 워커로 메시지를 보내려면 `navigator.serviceWorker.controller.postMessage(message)`를 사용하고, 서비스 워커에서 클라이언트로 메시지를 보내려면 `client.postMessage(message)`를 사용합니다. 메시지를 수신하기 위해서는 양쪽 모두 `addEventListener('message', handler)`를 사용합니다. `fetch()`는 네트워크 요청을 보내는 API이고, `sendMessage()`와 `communicate()`는 존재하지 않는 API입니다.
+
+#### 문제 3
+**문제**: Workbox를 React 프로젝트에 통합할 때 사용할 수 있는 도구는? (복수 응답)
+
+**정답**: react-app-rewired, customize-cra, workbox-webpack-plugin
+
+**해설**: 
+- react-app-rewired: Create React App 프로젝트의 웹팩 설정을 eject 없이 커스터마이징할 수 있게 해주는 도구입니다. Workbox 설정을 변경하는 데 사용할 수 있습니다.
+- customize-cra: react-app-rewired와 함께 사용되며, CRA의 웹팩 설정을 더 쉽게 수정할 수 있는 유틸리티 함수를 제공합니다. Workbox 관련 설정을 조정하는 데 유용합니다.
+- workbox-webpack-plugin: Workbox의 공식 웹팩 플러그인으로, 서비스 워커 생성 및 프리캐싱을 자동화합니다. CRA는 내부적으로 이 플러그인을 사용합니다.
+- react-workbox는 존재하지 않는 라이브러리입니다.
+- service-worker-loader는 웹팩 로더로 존재하지만, Workbox와 직접적인 관련이 없으며 React 프로젝트에서 일반적으로 사용되지 않습니다.
+
+#### 문제 4
+**문제**: React 애플리케이션에서 PWA 설치 프롬프트를 캡처하는 이벤트는?
+
+**정답**: beforeinstallprompt
+
+**해설**: React 애플리케이션에서 PWA 설치 프롬프트를 캡처하는 이벤트는 `beforeinstallprompt`입니다. 이 이벤트는 브라우저가 PWA 설치 프롬프트를 표시하기 직전에 발생하며, 이벤트 객체를 저장해두었다가 나중에 사용자 정의 설치 버튼을 클릭했을 때 `prompt()` 메서드를 호출하여 설치 프롬프트를 표시할 수 있습니다. 이를 통해 개발자는 설치 경험을 더 잘 제어하고 사용자에게 적절한 시점에 설치를 유도할 수 있습니다. `installprompt`, `pwainstall`, `appinstall`은 표준 이벤트가 아닙니다.
+
+#### 문제 5
+**문제**: 다음 중 React 애플리케이션에서 오프라인 상태를 감지하는 올바른 방법은?
+
+**정답**: !navigator.onLine
+
+**해설**: React 애플리케이션에서 오프라인 상태를 감지하는 올바른 방법은 `!navigator.onLine`입니다. `navigator.onLine` 속성은 브라우저가 네트워크에 연결되어 있는지 여부를 불리언 값으로 반환하므로, 이 값을 부정하면 오프라인 상태를 확인할 수 있습니다. React 컴포넌트에서는 일반적으로 이 값을 상태로 관리하고, `online`과 `offline` 이벤트 리스너를 등록하여 네트워크 상태 변화를 감지합니다. `navigator.isOffline`, `window.offline`, `window.navigator.connection.offline`은 유효한 API가 아닙니다.
+
+#### 문제 6
+**문제**: CRA에서 생성된 서비스 워커의 기본 캐싱 전략은?
+
+**정답**: 스테일-와일-리밸리데이트(Stale-While-Revalidate)
+
+**해설**: Create React App(CRA)에서 생성된 서비스 워커의 기본 캐싱 전략은 스테일-와일-리밸리데이트(Stale-While-Revalidate)입니다. 이 전략은 캐시된 응답을 즉시 반환하면서 동시에 백그라운드에서 네트워크 요청을 보내 캐시를 업데이트합니다. CRA v4 이상에서는 Workbox를 기반으로 서비스 워커를 생성하며, 특히 이미지와 같은 정적 자산에 대해 스테일-와일-리밸리데이트 전략을 기본으로 사용합니다. 이 전략은 빠른 응답 시간과 최신 콘텐츠 제공 사이의 균형을 맞추는 데 적합합니다. 네비게이션 요청(HTML)에 대해서는 네트워크 우선 전략을 사용하는 경우도 있습니다.
+
+#### 문제 7
+**문제**: React 애플리케이션에서 서비스 워커 업데이트를 처리하는 올바른 방법은? (복수 응답)
+
+**정답**: 새 서비스 워커에게 `skipWaiting()` 메시지 전송, 업데이트 알림 UI 표시
+
+**해설**: 
+- 새 서비스 워커에게 `skipWaiting()` 메시지 전송: 새 서비스 워커가 설치되면 `postMessage({ type: 'SKIP_WAITING' })`를 통해 메시지를 보내 `skipWaiting()`을 호출하도록 하여 즉시 활성화될 수 있게 합니다.
+- 업데이트 알림 UI 표시: 사용자에게 새 버전이 사용 가능함을 알리고 업데이트를 적용하기 위한 액션을 제공하는 UI를 표시합니다.
+- 자동으로 페이지 새로고침: 이는 사용자 경험을 저해할 수 있으므로 사용자의 동의 없이 자동으로 새로고침하는 것은 권장되지 않습니다. 대신 사용자가 업데이트를 수락한 후에 새로고침하는 것이 좋습니다.
+- 서비스 워커 등록 취소 후 재등록: 이는 불필요하게 복잡하며, 서비스 워커의 정상적인 업데이트 메커니즘을 우회합니다.
+- localStorage에 업데이트 정보 저장: 서비스 워커 업데이트 상태는 ServiceWorkerRegistration 객체를 통해 관리되므로, localStorage에 별도로 저장할 필요가 없습니다.
+
