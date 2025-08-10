@@ -167,15 +167,5 @@
 - 4가지 키워드로 정리하는 핵심 포인트
 - 확인 문제
 
-#### [06-3 디버깅 및 테스트](chapters/06-3_debugging_testing.md)
-- 브라우저 개발자 도구
-  - Chrome DevTools
-  - Firefox DevTools
-- 서비스 워커 디버깅 기법
-- 자동화된 테스트 방법
-- 일반적인 문제 해결
-- 5가지 키워드로 정리하는 핵심 포인트
-- 확인 문제
-
 ### [정답 및 해설](answers_and_explanations.md)
 ### 찾아보기
