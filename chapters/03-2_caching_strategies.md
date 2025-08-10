@@ -197,29 +197,32 @@ self.addEventListener('fetch', event => {
 
 ```javascript
 self.addEventListener('fetch', event => {
-  event.respondWith(
-    // 캐시에서 응답 반환
-    caches.match(event.request)
-      .then(cachedResponse => {
-        // 백그라운드에서 네트워크 요청 및 캐시 업데이트
-        const fetchPromise = fetch(event.request)
-          .then(networkResponse => {
-            // 유효한 응답인지 확인
-            if (networkResponse && networkResponse.status === 200) {
-              const responseToCache = networkResponse.clone();
-              caches.open('cache-v1')
-                .then(cache => {
-                  cache.put(event.request, responseToCache);
-                });
-            }
-            return networkResponse;
-          });
-        
-        // 캐시된 응답이 있으면 반환, 없으면 네트워크 응답 기다림
-        return cachedResponse || fetchPromise;
-      })
-  );
+  event.respondWith(handleStaleWhileRevalidate(event.request));
 });
+
+async function handleStaleWhileRevalidate(request) {
+  // 캐시에서 응답 확인
+  const cachedResponse = await caches.match(request);
+  
+  // 백그라운드에서 네트워크 요청 및 캐시 업데이트
+  const fetchPromise = fetch(request)
+    .then(async (networkResponse) => {
+      // 유효한 응답인지 확인
+      if (networkResponse && networkResponse.status === 200) {
+        const responseToCache = networkResponse.clone();
+        const cache = await caches.open('cache-v1');
+        cache.put(request, responseToCache);
+      }
+      return networkResponse;
+    })
+    .catch(error => {
+      console.error('네트워크 요청 실패:', error);
+      throw error;
+    });
+  
+  // 캐시된 응답이 있으면 반환, 없으면 네트워크 응답 기다림
+  return cachedResponse || fetchPromise;
+}
 ```
 
 #### 장점
@@ -243,47 +246,46 @@ self.addEventListener('fetch', event => {
 
 ```javascript
 self.addEventListener('fetch', event => {
-  event.respondWith(
-    // 먼저 네트워크에서 시도
-    fetch(event.request)
-      .then(response => {
-        // 네트워크 응답 복제 및 캐시 저장
-        const responseToCache = response.clone();
-        caches.open('cache-v1')
-          .then(cache => {
-            cache.put(event.request, responseToCache);
-          });
-        
-        return response;
-      })
-      .catch(() => {
-        // 네트워크 실패 시 캐시에서 시도
-        return caches.match(event.request)
-          .then(cachedResponse => {
-            if (cachedResponse) {
-              return cachedResponse;
-            }
-            
-            // 캐시에도 없는 경우 요청 유형에 따라 기본 응답 제공
-            if (event.request.headers.get('accept').includes('text/html')) {
-              // HTML 요청인 경우 오프라인 페이지 제공
-              return caches.match('/offline.html');
-            }
-            
-            if (event.request.url.match(/\.(jpe?g|png|gif|svg)$/)) {
-              // 이미지 요청인 경우 기본 이미지 제공
-              return caches.match('/images/offline-image.png');
-            }
-            
-            // 그 외의 경우 기본 오프라인 응답
-            return new Response('Offline content not available', {
-              status: 503,
-              statusText: 'Service Unavailable'
-            });
-          });
-      })
-  );
+  event.respondWith(handleCacheFallback(event.request));
 });
+
+async function handleCacheFallback(request) {
+  try {
+    // 먼저 네트워크에서 시도
+    const response = await fetch(request);
+    
+    // 네트워크 응답 복제 및 캐시 저장
+    const cache = await caches.open('cache-v1');
+    cache.put(request, response.clone());
+    
+    return response;
+  } catch (error) {
+    // 네트워크 실패 시 캐시에서 시도
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) return cachedResponse;
+    
+    // 캐시에도 없는 경우 요청 유형에 따라 기본 응답 제공
+    const acceptHeader = request.headers.get('accept');
+    
+    // HTML 요청인 경우 오프라인 페이지 제공
+    if (acceptHeader?.includes('text/html')) {
+      const offlineHtml = await caches.match('/offline.html');
+      if (offlineHtml) return offlineHtml;
+    }
+    
+    // 이미지 요청인 경우 기본 이미지 제공
+    if (request.url.match(/\.(jpe?g|png|gif|svg)$/)) {
+      const offlineImage = await caches.match('/images/offline-image.png');
+      if (offlineImage) return offlineImage;
+    }
+    
+    // 그 외의 경우 기본 오프라인 응답
+    return new Response('Offline content not available', {
+      status: 503,
+      statusText: 'Service Unavailable'
+    });
+  }
+}
 ```
 
 #### 장점
@@ -393,66 +395,70 @@ self.addEventListener('fetch', event => {
 });
 
 // 네트워크 우선 전략 구현
-function networkFirst(request) {
-  return fetch(request)
-    .then(response => {
-      const responseClone = response.clone();
-      caches.open('dynamic-cache-v1')
-        .then(cache => {
-          cache.put(request, responseClone);
-        });
-      return response;
-    })
-    .catch(() => {
-      return caches.match(request)
-        .then(cachedResponse => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-          // 오프라인 폴백
-          if (request.mode === 'navigate') {
-            return caches.match('/offline.html');
-          }
-          return new Response('Offline content not available');
-        });
-    });
+async function networkFirst(request) {
+  try {
+    // 네트워크에서 리소스 가져오기 시도
+    const response = await fetch(request);
+    
+    // 응답 복제 및 캐시 저장
+    const cache = await caches.open('dynamic-cache-v1');
+    cache.put(request, response.clone());
+    
+    return response;
+  } catch (error) {
+    // 네트워크 실패 시 캐시에서 시도
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) return cachedResponse;
+    
+    // 오프라인 폴백 - 네비게이션 요청인 경우 오프라인 페이지 제공
+    if (request.mode === 'navigate') {
+      const offlineHtml = await caches.match('/offline.html');
+      if (offlineHtml) return offlineHtml;
+    }
+    
+    // 기본 오프라인 응답
+    return new Response('Offline content not available');
+  }
 }
 
 // 캐시 우선 전략 구현
-function cacheFirst(request) {
-  return caches.match(request)
-    .then(cachedResponse => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(request)
-        .then(response => {
-          const responseClone = response.clone();
-          caches.open('static-cache-v1')
-            .then(cache => {
-              cache.put(request, responseClone);
-            });
-          return response;
-        });
-    });
+async function cacheFirst(request) {
+  // 캐시에서 먼저 확인
+  const cachedResponse = await caches.match(request);
+  
+  // 캐시에 있으면 즉시 반환 (early return)
+  if (cachedResponse) return cachedResponse;
+  
+  try {
+    // 캐시에 없으면 네트워크에서 가져오기
+    const response = await fetch(request);
+    
+    // 응답 복제 및 캐시 저장
+    const cache = await caches.open('static-cache-v1');
+    cache.put(request, response.clone());
+    
+    return response;
+  } catch (error) {
+    console.error('네트워크 요청 실패:', error);
+    throw error;
+  }
 }
 
 // 스테일-와일-리밸리데이트 전략 구현
-function staleWhileRevalidate(request) {
-  return caches.match(request)
-    .then(cachedResponse => {
-      const fetchPromise = fetch(request)
-        .then(networkResponse => {
-          const responseClone = networkResponse.clone();
-          caches.open('api-cache-v1')
-            .then(cache => {
-              cache.put(request, responseClone);
-            });
-          return networkResponse;
-        });
-      
-      return cachedResponse || fetchPromise;
-    });
+async function staleWhileRevalidate(request) {
+  const cachedResponse = await caches.match(request);
+  
+  // 백그라운드에서 네트워크 요청 및 캐시 업데이트 (비동기적으로 처리)
+  fetch(request)
+    .then(networkResponse => {
+      const cache = caches.open('api-cache-v1')
+        .then(cache => cache.put(request, networkResponse.clone()));
+      return cache;
+    })
+    .catch(error => console.error('백그라운드 캐시 업데이트 실패:', error));
+  
+  // 캐시된 응답이 있으면 즉시 반환, 없으면 네트워크 요청 결과 반환
+  return cachedResponse || fetch(request);
 }
 ```
 

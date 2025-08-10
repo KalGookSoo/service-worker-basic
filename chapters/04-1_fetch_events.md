@@ -143,37 +143,45 @@ self.addEventListener('fetch', event => {
   
   // API 요청에 대한 사용자 정의 응답
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          // API 응답 처리
-          return response;
-        })
-        .catch(error => {
-          // API 오류 처리
-          return new Response(JSON.stringify({ error: 'API 요청 실패' }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        })
-    );
+    event.respondWith(handleApiRequest(event.request));
     return;
   }
   
   // 이미지 요청에 대한 사용자 정의 응답
   if (event.request.destination === 'image') {
-    event.respondWith(
-      fetch(event.request)
-        .catch(error => {
-          // 이미지 로드 실패 시 대체 이미지 제공
-          return caches.match('/images/placeholder.png');
-        })
-    );
+    event.respondWith(handleImageRequest(event.request));
     return;
   }
   
   // 그 외 요청은 기본 동작 수행 (respondWith 호출하지 않음)
 });
+
+// API 요청 처리 함수
+async function handleApiRequest(request) {
+  try {
+    // API 요청 시도
+    const response = await fetch(request);
+    // API 응답 처리
+    return response;
+  } catch (error) {
+    // API 오류 처리
+    return new Response(JSON.stringify({ error: 'API 요청 실패' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// 이미지 요청 처리 함수
+async function handleImageRequest(request) {
+  try {
+    // 이미지 요청 시도
+    return await fetch(request);
+  } catch (error) {
+    // 이미지 로드 실패 시 대체 이미지 제공
+    return caches.match('/images/placeholder.png');
+  }
+}
 ```
 
 ### 사용자 정의 응답 생성하기
@@ -258,10 +266,10 @@ self.addEventListener('fetch', event => {
       const cache = await caches.open('cache-v1');
       const cachedResponse = await cache.match(request);
       
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+      // 캐시에 있으면 즉시 반환 (early return)
+      if (cachedResponse) return cachedResponse;
       
+      // 캐시에 없으면 네트워크에서 가져오기
       const networkResponse = await fetch(request);
       cache.put(request, networkResponse.clone());
       return networkResponse;
@@ -269,16 +277,17 @@ self.addEventListener('fetch', event => {
     
     networkFirst: async (request) => {
       try {
+        // 네트워크에서 먼저 시도
         const networkResponse = await fetch(request);
         const cache = await caches.open('cache-v1');
         cache.put(request, networkResponse.clone());
         return networkResponse;
       } catch (error) {
+        // 네트워크 실패 시 캐시에서 시도
         const cachedResponse = await caches.match(request);
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-        throw error;
+        
+        // 캐시된 응답이 있으면 반환, 없으면 오류 발생
+        return cachedResponse || Promise.reject(error);
       }
     },
     
@@ -286,13 +295,13 @@ self.addEventListener('fetch', event => {
       const cache = await caches.open('cache-v1');
       const cachedResponse = await cache.match(request);
       
-      const fetchPromise = fetch(request)
-        .then(networkResponse => {
-          cache.put(request, networkResponse.clone());
-          return networkResponse;
-        });
+      // 백그라운드에서 네트워크 요청 및 캐시 업데이트 (비동기적으로 처리)
+      fetch(request)
+        .then(response => cache.put(request, response.clone()))
+        .catch(error => console.error('백그라운드 캐시 업데이트 실패:', error));
       
-      return cachedResponse || fetchPromise;
+      // 캐시된 응답이 있으면 즉시 반환, 없으면 새 요청 수행
+      return cachedResponse || fetch(request);
     }
   };
   

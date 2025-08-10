@@ -17,24 +17,27 @@ API 응답 캐싱은 서버에서 제공하는 데이터를 캐시하여 네트�
 self.addEventListener('fetch', event => {
   // API 요청인지 확인
   if (event.request.url.includes('/api/')) {
-    event.respondWith(
-      caches.open('api-cache-v1')
-        .then(cache => {
-          return fetch(event.request)
-            .then(response => {
-              // 응답 복제 및 캐시 저장
-              const responseToCache = response.clone();
-              cache.put(event.request, responseToCache);
-              return response;
-            })
-            .catch(() => {
-              // 네트워크 요청 실패 시 캐시에서 응답 제공
-              return cache.match(event.request);
-            });
-        })
-    );
+    event.respondWith(handleApiRequest(event.request));
   }
 });
+
+async function handleApiRequest(request) {
+  const cache = await caches.open('api-cache-v1');
+  
+  try {
+    // 네트워크 요청 시도
+    const response = await fetch(request);
+    
+    // 응답 복제 및 캐시 저장
+    const responseToCache = response.clone();
+    cache.put(request, responseToCache);
+    
+    return response;
+  } catch (error) {
+    // 네트워크 요청 실패 시 캐시에서 응답 제공
+    return cache.match(request);
+  }
+}
 ```
 
 #### 타임스탬프 기반 캐싱
@@ -44,62 +47,57 @@ API 응답을 캐시할 때 타임스탬프를 함께 저장하여 캐시의 신
 ```javascript
 self.addEventListener('fetch', event => {
   if (event.request.url.includes('/api/')) {
-    event.respondWith(
-      caches.open('api-cache-v1')
-        .then(async cache => {
-          // 캐시에서 응답 확인
-          const cachedResponse = await cache.match(event.request);
-          
-          if (cachedResponse) {
-            // 캐시된 응답의 타임스탬프 확인
-            const cachedData = await cachedResponse.json();
-            const cachedTime = cachedData.timestamp || 0;
-            const currentTime = Date.now();
-            
-            // 캐시가 10분(600000ms) 이내인 경우 캐시된 응답 반환
-            if (currentTime - cachedTime < 600000) {
-              return cachedResponse;
-            }
-          }
-          
-          // 캐시가 없거나 오래된 경우 네트워크 요청
-          return fetch(event.request)
-            .then(response => {
-              if (!response || response.status !== 200) {
-                return response;
-              }
-              
-              // 응답 복제 및 타임스탬프 추가
-              const responseToCache = response.clone();
-              responseToCache.json().then(data => {
-                // 타임스탬프 추가
-                data.timestamp = Date.now();
-                
-                // 수정된 응답을 캐시에 저장
-                const modifiedResponse = new Response(JSON.stringify(data), {
-                  headers: responseToCache.headers
-                });
-                
-                cache.put(event.request, modifiedResponse);
-              });
-              
-              return response;
-            })
-            .catch(() => {
-              // 네트워크 요청 실패 시 캐시된 응답 반환(오래되었더라도)
-              if (cachedResponse) {
-                return cachedResponse;
-              }
-              
-              // 캐시된 응답도 없는 경우 오류 응답 반환
-              return new Response(JSON.stringify({ error: 'Network request failed and no cache available' }), {
-                headers: { 'Content-Type': 'application/json' }
-              });
-            });
-        })
-    );
+    event.respondWith(handleTimestampBasedCaching(event.request));
   }
 });
+
+async function handleTimestampBasedCaching(request) {
+  const cache = await caches.open('api-cache-v1');
+  const cachedResponse = await cache.match(request);
+  
+  // 캐시된 응답이 있고 유효한지 확인
+  if (cachedResponse) {
+    try {
+      const cachedData = await cachedResponse.json();
+      const cachedTime = cachedData.timestamp || 0;
+      
+      // 캐시가 10분(600000ms) 이내인 경우 즉시 반환
+      if (Date.now() - cachedTime < 600000) return cachedResponse;
+    } catch (error) {
+      console.error('캐시된 응답 파싱 오류:', error);
+    }
+  }
+  
+  // 네트워크 요청 시도
+  try {
+    const response = await fetch(request);
+    
+    // 유효하지 않은 응답은 그대로 반환
+    if (!response || response.status !== 200) return response;
+    
+    // 응답 복제 및 타임스탬프 추가
+    const responseToCache = response.clone();
+    const data = await responseToCache.json();
+    data.timestamp = Date.now();
+    
+    // 수정된 응답을 캐시에 저장
+    cache.put(request, new Response(JSON.stringify(data), {
+      headers: responseToCache.headers
+    }));
+    
+    return response;
+  } catch (error) {
+    // 네트워크 요청 실패 시 캐시된 응답 반환(오래되었더라도)
+    if (cachedResponse) return cachedResponse;
+    
+    // 캐시된 응답도 없는 경우 오류 응답 반환
+    return new Response(JSON.stringify({ 
+      error: 'Network request failed and no cache available' 
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
 ```
 
 ### 조건부 캐싱
@@ -119,34 +117,47 @@ self.addEventListener('fetch', event => {
     
     if (hasAuthHeader) {
       // 인증된 요청은 네트워크 우선 전략 적용
-      event.respondWith(
-        fetch(event.request)
-          .catch(() => {
-            return caches.match(event.request);
-          })
-      );
+      event.respondWith(handleAuthenticatedRequest(event.request));
     } else {
       // 인증되지 않은 요청은 캐시 우선 전략 적용
-      event.respondWith(
-        caches.match(event.request)
-          .then(cachedResponse => {
-            if (cachedResponse) {
-              return cachedResponse;
-            }
-            return fetch(event.request)
-              .then(response => {
-                const responseToCache = response.clone();
-                caches.open('api-public-cache-v1')
-                  .then(cache => {
-                    cache.put(event.request, responseToCache);
-                  });
-                return response;
-              });
-          })
-      );
+      event.respondWith(handlePublicRequest(event.request));
     }
   }
 });
+
+// 인증된 요청 처리 (네트워크 우선 전략)
+async function handleAuthenticatedRequest(request) {
+  try {
+    // 먼저 네트워크에서 시도
+    return await fetch(request);
+  } catch (error) {
+    // 네트워크 실패 시 캐시에서 시도
+    const cache = await caches.match(request);
+    if (cache) return cache;
+    
+    // 캐시에도 없으면 오류 발생
+    throw error;
+  }
+}
+
+// 인증되지 않은 요청 처리 (캐시 우선 전략)
+async function handlePublicRequest(request) {
+  // 먼저 캐시에서 확인
+  const cachedResponse = await caches.match(request);
+  if (cachedResponse) {
+    return cachedResponse;
+  }
+  
+  // 캐시에 없으면 네트워크에서 가져오기
+  const response = await fetch(request);
+  
+  // 응답 복제 및 캐시 저장
+  const responseToCache = response.clone();
+  const cache = await caches.open('api-public-cache-v1');
+  cache.put(request, responseToCache);
+  
+  return response;
+}
 ```
 
 #### 요청 메서드에 따른 조건부 캐싱
@@ -158,28 +169,33 @@ self.addEventListener('fetch', event => {
   if (event.request.url.includes('/api/')) {
     // GET 요청만 캐싱
     if (event.request.method === 'GET') {
-      event.respondWith(
-        caches.open('api-cache-v1')
-          .then(cache => {
-            return cache.match(event.request)
-              .then(cachedResponse => {
-                const fetchPromise = fetch(event.request)
-                  .then(networkResponse => {
-                    cache.put(event.request, networkResponse.clone());
-                    return networkResponse;
-                  });
-                
-                // 스테일-와일-리밸리데이트 전략 적용
-                return cachedResponse || fetchPromise;
-              });
-          })
-      );
+      event.respondWith(handleGetRequest(event.request));
     } else {
       // POST, PUT, DELETE 등은 항상 네트워크로 요청
       event.respondWith(fetch(event.request));
     }
   }
 });
+
+// GET 요청 처리 (스테일-와일-리밸리데이트 전략)
+async function handleGetRequest(request) {
+  const cache = await caches.open('api-cache-v1');
+  const cachedResponse = await cache.match(request);
+  
+  // 백그라운드에서 네트워크 요청 및 캐시 업데이트
+  const fetchPromise = fetch(request)
+    .then(networkResponse => {
+      cache.put(request, networkResponse.clone());
+      return networkResponse;
+    })
+    .catch(error => {
+      console.error('네트워크 요청 실패:', error);
+      throw error;
+    });
+  
+  // 캐시된 응답이 있으면 반환, 없으면 네트워크 응답 기다림
+  return cachedResponse || fetchPromise;
+}
 ```
 
 #### 데이터 유형에 따른 조건부 캐싱
@@ -192,51 +208,54 @@ self.addEventListener('fetch', event => {
   
   // 제품 데이터 API (자주 변경되지 않음)
   if (url.pathname.includes('/api/products')) {
-    event.respondWith(
-      caches.open('products-cache-v1')
-        .then(cache => {
-          return cache.match(event.request)
-            .then(cachedResponse => {
-              if (cachedResponse) {
-                // 백그라운드에서 캐시 업데이트
-                fetch(event.request)
-                  .then(response => {
-                    cache.put(event.request, response.clone());
-                  })
-                  .catch(() => {});
-                
-                return cachedResponse;
-              }
-              
-              return fetch(event.request)
-                .then(response => {
-                  cache.put(event.request, response.clone());
-                  return response;
-                });
-            });
-        })
-    );
+    event.respondWith(handleProductRequest(event.request));
   }
-  
   // 가격 데이터 API (자주 변경됨)
   else if (url.pathname.includes('/api/prices')) {
-    event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          // 성공 시 캐시 업데이트
-          caches.open('prices-cache-v1')
-            .then(cache => {
-              cache.put(event.request, response.clone());
-            });
-          return response;
-        })
-        .catch(() => {
-          // 네트워크 실패 시에만 캐시 사용
-          return caches.match(event.request);
-        })
-    );
+    event.respondWith(handlePriceRequest(event.request));
   }
 });
+
+// 제품 데이터 처리 (캐시 우선, 백그라운드 업데이트)
+async function handleProductRequest(request) {
+  const cache = await caches.open('products-cache-v1');
+  const cachedResponse = await cache.match(request);
+  
+  if (cachedResponse) {
+    // 백그라운드에서 캐시 업데이트
+    fetch(request)
+      .then(response => {
+        cache.put(request, response.clone());
+      })
+      .catch(() => {
+        console.log('백그라운드 캐시 업데이트 실패');
+      });
+    
+    return cachedResponse;
+  }
+  
+  // 캐시에 없으면 네트워크에서 가져오기
+  const response = await fetch(request);
+  cache.put(request, response.clone());
+  return response;
+}
+
+// 가격 데이터 처리 (네트워크 우선)
+async function handlePriceRequest(request) {
+  try {
+    // 먼저 네트워크에서 시도
+    const response = await fetch(request);
+    
+    // 성공 시 캐시 업데이트
+    const cache = await caches.open('prices-cache-v1');
+    cache.put(request, response.clone());
+    
+    return response;
+  } catch (error) {
+    // 네트워크 실패 시에만 캐시 사용
+    return caches.match(request);
+  }
+}
 ```
 
 ### 캐시 만료 및 갱신
@@ -248,62 +267,63 @@ self.addEventListener('fetch', event => {
 캐시된 응답에 만료 시간을 설정하는 방법입니다:
 
 ```javascript
-function fetchAndCache(request, cacheName, maxAgeSeconds) {
-  return fetch(request)
-    .then(response => {
-      if (!response || response.status !== 200) {
-        return response;
-      }
-      
-      // 응답 복제 및 메타데이터 추가
-      const responseToCache = response.clone();
-      const headers = new Headers(responseToCache.headers);
-      const expirationTime = Date.now() + (maxAgeSeconds * 1000);
-      
-      // 커스텀 헤더에 만료 시간 저장
-      headers.append('sw-cache-expiration', expirationTime);
-      
-      // 수정된 응답 생성
-      const modifiedResponse = new Response(responseToCache.body, {
-        status: responseToCache.status,
-        statusText: responseToCache.statusText,
-        headers: headers
-      });
-      
-      // 캐시에 저장
-      caches.open(cacheName)
-        .then(cache => {
-          cache.put(request, modifiedResponse);
-        });
-      
-      return response;
-    });
+// 만료 시간이 있는 응답 가져오기 및 캐싱
+async function fetchAndCache(request, cacheName, maxAgeSeconds) {
+  const response = await fetch(request);
+  
+  if (!response || response.status !== 200) {
+    return response;
+  }
+  
+  // 응답 복제 및 메타데이터 추가
+  const responseToCache = response.clone();
+  const headers = new Headers(responseToCache.headers);
+  const expirationTime = Date.now() + (maxAgeSeconds * 1000);
+  
+  // 커스텀 헤더에 만료 시간 저장
+  headers.append('sw-cache-expiration', expirationTime);
+  
+  // 수정된 응답 생성
+  const modifiedResponse = new Response(responseToCache.body, {
+    status: responseToCache.status,
+    statusText: responseToCache.statusText,
+    headers: headers
+  });
+  
+  // 캐시에 저장
+  const cache = await caches.open(cacheName);
+  await cache.put(request, modifiedResponse);
+  
+  return response;
 }
 
 self.addEventListener('fetch', event => {
   if (event.request.url.includes('/api/')) {
-    event.respondWith(
-      caches.match(event.request)
-        .then(cachedResponse => {
-          // 캐시된 응답이 있는지 확인
-          if (cachedResponse) {
-            // 만료 시간 확인
-            const expirationHeader = cachedResponse.headers.get('sw-cache-expiration');
-            const expirationTime = parseInt(expirationHeader, 10);
-            
-            // 만료되지 않았으면 캐시된 응답 반환
-            if (expirationTime > Date.now()) {
-              return cachedResponse;
-            }
-          }
-          
-          // 캐시가 없거나 만료된 경우 네트워크 요청
-          // 뉴스 API는 30분(1800초) 캐싱
-          return fetchAndCache(event.request, 'api-cache-v1', 1800);
-        })
-    );
+    event.respondWith(handleApiRequestWithExpiration(event.request));
   }
 });
+
+// 만료 시간이 있는 API 요청 처리
+async function handleApiRequestWithExpiration(request) {
+  // 캐시에서 응답 확인
+  const cachedResponse = await caches.match(request);
+  
+  // 캐시된 응답이 있는지 확인
+  if (cachedResponse) {
+    // 만료 시간 확인
+    const expirationHeader = cachedResponse.headers.get('sw-cache-expiration');
+    const expirationTime = parseInt(expirationHeader, 10);
+    
+    // 만료되지 않았으면 캐시된 응답 반환
+    if (expirationTime > Date.now()) {
+      return cachedResponse;
+    }
+  }
+  
+  // 캐시가 없거나 만료된 경우 네트워크 요청
+  // 뉴스 API는 30분(1800초) 캐싱
+  return fetchAndCache(request, 'api-cache-v1', 1800);
+}
 ```
 
 #### 주기적 캐시 갱신
@@ -329,19 +349,19 @@ async function refreshApiCache() {
   const cache = await caches.open('api-cache-v1');
   
   // 각 API 엔드포인트에 대해 새로운 요청 수행
-  return Promise.all(
-    apiUrls.map(url => {
-      return fetch(url)
-        .then(response => {
-          if (response && response.status === 200) {
-            return cache.put(new Request(url), response);
-          }
-        })
-        .catch(error => {
-          console.error(`Failed to refresh cache for ${url}:`, error);
-        });
-    })
-  );
+  const refreshPromises = apiUrls.map(async (url) => {
+    try {
+      const response = await fetch(url);
+      
+      if (response && response.status === 200) {
+        return cache.put(new Request(url), response);
+      }
+    } catch (error) {
+      console.error(`Failed to refresh cache for ${url}:`, error);
+    }
+  });
+  
+  return Promise.all(refreshPromises);
 }
 
 // 메인 스레드에서 백그라운드 동기화 등록 (참고용)
@@ -350,8 +370,8 @@ if ('serviceWorker' in navigator && 'SyncManager' in window) {
   navigator.serviceWorker.ready
     .then(registration => {
       // 1시간마다 캐시 갱신
-      setInterval(() => {
-        registration.sync.register('refresh-api-cache');
+      setInterval(async () => {
+        await registration.sync.register('refresh-api-cache');
       }, 3600000);
     });
 }
@@ -368,50 +388,56 @@ const OLD_API_CACHE_NAMES = ['api-cache-v1'];
 
 // 서비스 워커 설치 시 초기 API 데이터 캐싱
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(API_CACHE_NAME)
-      .then(cache => {
-        return cache.addAll([
-          '/api/initial-data'
-        ]);
-      })
-  );
+  event.waitUntil(cacheInitialData());
 });
+
+async function cacheInitialData() {
+  const cache = await caches.open(API_CACHE_NAME);
+  return cache.addAll(['/api/initial-data']);
+}
 
 // 서비스 워커 활성화 시 이전 버전의 캐시 삭제
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys()
-      .then(cacheNames => {
-        return Promise.all(
-          cacheNames
-            .filter(cacheName => OLD_API_CACHE_NAMES.includes(cacheName))
-            .map(cacheName => caches.delete(cacheName))
-        );
-      })
-  );
+  event.waitUntil(deleteOldCaches());
 });
+
+async function deleteOldCaches() {
+  const cacheNames = await caches.keys();
+  const deletionPromises = cacheNames
+    .filter(cacheName => OLD_API_CACHE_NAMES.includes(cacheName))
+    .map(cacheName => caches.delete(cacheName));
+  
+  return Promise.all(deletionPromises);
+}
 
 // API 요청 처리
 self.addEventListener('fetch', event => {
   if (event.request.url.includes('/api/')) {
-    event.respondWith(
-      caches.open(API_CACHE_NAME)
-        .then(cache => {
-          return fetch(event.request)
-            .then(response => {
-              // 네트워크 응답 캐싱
-              cache.put(event.request, response.clone());
-              return response;
-            })
-            .catch(() => {
-              // 네트워크 실패 시 캐시 사용
-              return cache.match(event.request);
-            });
-        })
-    );
+    event.respondWith(handleApiRequestWithVersioning(event.request));
   }
 });
+
+async function handleApiRequestWithVersioning(request) {
+  const cache = await caches.open(API_CACHE_NAME);
+  
+  try {
+    // 네트워크 요청 시도
+    const response = await fetch(request);
+    
+    // 네트워크 응답 캐싱
+    cache.put(request, response.clone());
+    return response;
+  } catch (error) {
+    // 네트워크 실패 시 캐시 사용
+    const cachedResponse = await cache.match(request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    
+    // 캐시에도 없으면 오류 발생
+    throw error;
+  }
+}
 ```
 
 ### 헤더 기반 캐싱 결정
@@ -425,56 +451,64 @@ HTTP 헤더를 활용하여 캐싱 결정을 내리는 방법을 알아보겠습
 ```javascript
 self.addEventListener('fetch', event => {
   if (event.request.url.includes('/api/')) {
-    event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          // Cache-Control 헤더 확인
-          const cacheControl = response.headers.get('Cache-Control');
-          
-          // no-store 지시자가 있으면 캐싱하지 않음
-          if (cacheControl && cacheControl.includes('no-store')) {
-            return response;
-          }
-          
-          // private 지시자가 있으면 인증된 요청인지 확인
-          if (cacheControl && cacheControl.includes('private')) {
-            // 인증 헤더가 없으면 캐싱하지 않음
-            if (!event.request.headers.has('Authorization')) {
-              return response;
-            }
-          }
-          
-          // max-age 값 추출
-          let maxAge = 0;
-          if (cacheControl) {
-            const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
-            if (maxAgeMatch) {
-              maxAge = parseInt(maxAgeMatch[1], 10);
-            }
-          }
-          
-          // 응답 복제 및 캐싱
-          const responseToCache = response.clone();
-          caches.open('api-cache-v1')
-            .then(cache => {
-              cache.put(event.request, responseToCache);
-              
-              // max-age가 설정된 경우 만료 시간 후 캐시 삭제
-              if (maxAge > 0) {
-                setTimeout(() => {
-                  cache.delete(event.request);
-                }, maxAge * 1000);
-              }
-            });
-          
-          return response;
-        })
-        .catch(() => {
-          return caches.match(event.request);
-        })
-    );
+    event.respondWith(handleRequestWithCacheControl(event.request));
   }
 });
+
+async function handleRequestWithCacheControl(request) {
+  try {
+    // 네트워크 요청 시도
+    const response = await fetch(request);
+    
+    // Cache-Control 헤더 확인
+    const cacheControl = response.headers.get('Cache-Control');
+    
+    // no-store 지시자가 있으면 캐싱하지 않음
+    if (cacheControl && cacheControl.includes('no-store')) {
+      return response;
+    }
+    
+    // private 지시자가 있으면 인증된 요청인지 확인
+    if (cacheControl && cacheControl.includes('private')) {
+      // 인증 헤더가 없으면 캐싱하지 않음
+      if (!request.headers.has('Authorization')) {
+        return response;
+      }
+    }
+    
+    // max-age 값 추출
+    let maxAge = 0;
+    if (cacheControl) {
+      const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
+      if (maxAgeMatch) {
+        maxAge = parseInt(maxAgeMatch[1], 10);
+      }
+    }
+    
+    // 응답 복제 및 캐싱
+    const responseToCache = response.clone();
+    const cache = await caches.open('api-cache-v1');
+    await cache.put(request, responseToCache);
+    
+    // max-age가 설정된 경우 만료 시간 후 캐시 삭제
+    if (maxAge > 0) {
+      setTimeout(() => {
+        cache.delete(request);
+      }, maxAge * 1000);
+    }
+    
+    return response;
+  } catch (error) {
+    // 네트워크 요청 실패 시 캐시에서 시도
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    
+    // 캐시에도 없으면 오류 발생
+    throw error;
+  }
+}
 ```
 
 #### ETag 및 If-None-Match 헤더 활용
@@ -484,72 +518,72 @@ ETag와 If-None-Match 헤더를 활용한 조건부 요청으로 효율적인 �
 ```javascript
 self.addEventListener('fetch', event => {
   if (event.request.url.includes('/api/')) {
-    event.respondWith(
-      caches.open('api-cache-v1')
-        .then(async cache => {
-          // 캐시에서 응답 확인
-          const cachedResponse = await cache.match(event.request);
-          
-          if (cachedResponse) {
-            // ETag 헤더 확인
-            const etag = cachedResponse.headers.get('ETag');
-            
-            if (etag) {
-              // 조건부 요청 생성
-              const conditionalRequest = new Request(event.request.url, {
-                method: event.request.method,
-                headers: new Headers(event.request.headers),
-                mode: event.request.mode,
-                credentials: event.request.credentials,
-                cache: event.request.cache,
-                redirect: event.request.redirect,
-                referrer: event.request.referrer
-              });
-              
-              // If-None-Match 헤더 추가
-              conditionalRequest.headers.set('If-None-Match', etag);
-              
-              // 조건부 요청 수행
-              return fetch(conditionalRequest)
-                .then(response => {
-                  // 304 Not Modified인 경우 캐시된 응답 사용
-                  if (response.status === 304) {
-                    return cachedResponse;
-                  }
-                  
-                  // 새로운 응답이 있는 경우 캐시 업데이트
-                  cache.put(event.request, response.clone());
-                  return response;
-                })
-                .catch(() => {
-                  // 네트워크 오류 시 캐시된 응답 사용
-                  return cachedResponse;
-                });
-            }
-          }
-          
-          // 캐시된 응답이 없거나 ETag가 없는 경우 일반 요청
-          return fetch(event.request)
-            .then(response => {
-              cache.put(event.request, response.clone());
-              return response;
-            })
-            .catch(() => {
-              // 네트워크 오류 시 캐시된 응답 반환(있는 경우)
-              if (cachedResponse) {
-                return cachedResponse;
-              }
-              
-              // 오류 응답 생성
-              return new Response('Network error and no cache available', {
-                status: 503,
-                statusText: 'Service Unavailable'
-              });
-            });
-        })
-    );
+    event.respondWith(handleRequestWithETag(event.request));
   }
 });
+
+async function handleRequestWithETag(request) {
+  const cache = await caches.open('api-cache-v1');
+  
+  // 캐시에서 응답 확인
+  const cachedResponse = await cache.match(request);
+  
+  if (cachedResponse) {
+    // ETag 헤더 확인
+    const etag = cachedResponse.headers.get('ETag');
+    
+    if (etag) {
+      try {
+        // 조건부 요청 생성
+        const conditionalRequest = new Request(request.url, {
+          method: request.method,
+          headers: new Headers(request.headers),
+          mode: request.mode,
+          credentials: request.credentials,
+          cache: request.cache,
+          redirect: request.redirect,
+          referrer: request.referrer
+        });
+        
+        // If-None-Match 헤더 추가
+        conditionalRequest.headers.set('If-None-Match', etag);
+        
+        // 조건부 요청 수행
+        const response = await fetch(conditionalRequest);
+        
+        // 304 Not Modified인 경우 캐시된 응답 사용
+        if (response.status === 304) {
+          return cachedResponse;
+        }
+        
+        // 새로운 응답이 있는 경우 캐시 업데이트
+        await cache.put(request, response.clone());
+        return response;
+      } catch (error) {
+        // 네트워크 오류 시 캐시된 응답 사용
+        return cachedResponse;
+      }
+    }
+  }
+  
+  // 캐시된 응답이 없거나 ETag가 없는 경우 일반 요청
+  try {
+    const response = await fetch(request);
+    await cache.put(request, response.clone());
+    return response;
+  } catch (error) {
+    // 네트워크 오류 시 캐시된 응답 반환(있는 경우)
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    
+    // 오류 응답 생성
+    return new Response('Network error and no cache available', {
+      status: 503,
+      statusText: 'Service Unavailable'
+    });
+  }
+}
 ```
 
 #### 동적 콘텐츠 캐싱 결정 흐름도
